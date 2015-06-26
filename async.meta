@@ -1,0 +1,7 @@
+(
+(license "BSD")
+(category misc)
+
+(author "Jonathan Y. Chan")
+(synopsis "Basic aynchronous primitives.")
+)
