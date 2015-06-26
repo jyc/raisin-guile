@@ -1,3 +1,4 @@
+
 # Async for CHICKEN Scheme
 
 This repository contains some experiments on replicating the interface of
@@ -7,6 +8,27 @@ scheduler, and, importantly, integrated I/O modules. All I have implemented is
 the basic Ivar/Deferred structures, a naive scheduler, and an `after` procedure.
 
 I made it for fun and to see how difficult such a thing would be.
+
+# Table of Contents
+
+- [Procedures](#markdown-header-procedures)
+    - [ivar](#markdown-header-ivar)
+        - [new-ivar](#markdown-header-new-ivar)
+        - [ivar-fill!](#markdown-header-ivar-fill)
+        - [ivar-read](#markdown-header-ivar-read)
+    - [deferred](#markdown-header-deferred)
+        - [bind](#markdown-header-bind)
+        - [return](#markdown-header-return)
+        - [peek](#markdown-header-peek)
+    - [Operators](#markdown-header-operators)
+        - [>>=](#markdown-header->>=)
+        - [>>+](#markdown-header->>+)
+    - [Scheduler](#markdown-header-scheduler)
+        - [scheduler-start!](#markdown-header-scheduler-start)
+- [Example](#markdown-header-example)
+- [Cleanliness](#markdown-header-cleanliness)
+- [Performance](#markdown-header-performance)
+- [Portability](#markdown-header-portability)
 
 # Procedures
 
