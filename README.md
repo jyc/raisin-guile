@@ -83,41 +83,41 @@ filled with the value `x`.
 
 ## Operators
 
-### &gt;&gt;=
+### >>=
 
-`(&gt;&gt;= a b c ...)`
+`(>>= a b c ...)`
 
-`&gt;&gt;=` binds the deferred `a` to the procedure `b`, then binds the resulting
+`>>=` binds the deferred `a` to the procedure `b`, then binds the resulting
 deferred to the procedure `c`, and so on.
 
-### &gt;&gt;+
+### >>+
 
-`(&gt;&gt;+ a ((x) b ...) c ...)`
+`(>>+ a ((x) b ...) c ...)`
 
-`&gt;&gt;+` is a bit of syntactic sugar. I don't recommend using it unless you
+`>>+` is a bit of syntactic sugar. I don't recommend using it unless you
 can understand the syntax-rules definition:
 
 ````
-(define-syntax &gt;&gt;+
+(define-syntax >>+
     (syntax-rules ()
       ((_ a ((x) b ...) c ...)
-   (&gt;&gt;+ (bind a
+   (>>+ (bind a
               (lambda (x)
                 b ...))
         c ...))
   ((_ a (() b ...) c ...)
-   (&gt;&gt;+ a ((_) b ...) c ...))
+   (>>+ a ((_) b ...) c ...))
   ((_ a b c ...)
-   (&gt;&gt;+ a (() b) c ...))
+   (>>+ a (() b) c ...))
   ((_ x) x)))
 ````
 
 
-`&gt;&gt;+` binds the deferred `a` to the procedure `(lambda (x) b ...)`, then
-recurses to `&gt;&gt;+` the resulting deferred with `c ...`. `((x) b ...)` can
+`>>+` binds the deferred `a` to the procedure `(lambda (x) b ...)`, then
+recurses to `>>+` the resulting deferred with `c ...`. `((x) b ...)` can
 be replced with `(() b ...)` if the value the previous deferred becomes
 determined to is not cared about. If the the application does not match either
-of the two preceding forms, then it expands to `(&gt;&gt+ (a (() b) c ...))`.
+of the two preceding forms, then it expands to `(>&gt+ (a (() b) c ...))`.
 
 I'm not sure whether or not this is a good idea.
 
