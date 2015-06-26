@@ -9,28 +9,6 @@ the basic Ivar/Deferred structures, a naive scheduler, and an `after` procedure.
 
 I made it for fun and to see how difficult such a thing would be.
 
-# Table of Contents
-
-- [Procedures](#markdown-header-procedures)
-    - [ivar](#markdown-header-ivar)
-        - [new-ivar](#markdown-header-new-ivar)
-        - [ivar-fill!](#markdown-header-ivar-fill)
-        - [ivar-read](#markdown-header-ivar-read)
-    - [deferred](#markdown-header-deferred)
-        - [bind](#markdown-header-bind)
-        - [return](#markdown-header-return)
-        - [peek](#markdown-header-peek)
-    - [Operators](#markdown-header-operators)
-        - [>>=](#markdown-header-)
-        - [>>+](#markdown-header-_1)
-    - [Scheduler](#markdown-header-scheduler)
-        - [scheduler-start!](#markdown-header-scheduler-start)
-        - [scheduler-start!](#markdown-header-scheduler-stop)
-- [Example](#markdown-header-example)
-- [Cleanliness](#markdown-header-cleanliness)
-- [Performance](#markdown-header-performance)
-- [Portability](#markdown-header-portability)
-
 # Procedures
 
 ## ivar
