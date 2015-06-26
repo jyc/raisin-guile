@@ -22,7 +22,7 @@ I made it for fun and to see how difficult such a thing would be.
         - [peek](#markdown-header-peek)
     - [Operators](#markdown-header-operators)
         - [>>=](#markdown-header-)
-        - [>>+](#markdown-header-_1_)
+        - [>>+](#markdown-header-_1)
     - [Scheduler](#markdown-header-scheduler)
         - [scheduler-start!](#markdown-header-scheduler-start)
         - [scheduler-start!](#markdown-header-scheduler-stop)
