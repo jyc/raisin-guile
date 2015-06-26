@@ -20,7 +20,7 @@ An ivar is created with `(new-ivar)`. It is initially in the empty state. In the
 empty state a given ivar `i` can be filled with a value `x` using `(ivar-fill! i
 x)`, after which `i` becomes filled. Once an ivar is filled, attempting to fill
 it again will result in a non-continuable `(exn deferred ivar-stuffed)`
-exception.`
+exception.
 
 ### new-ivar
 
@@ -58,10 +58,11 @@ and become determined once the ivar to which they are bound is filled.
 
 `(bind d f)`
 
-`bind` binds a procedure `f` itself returning a deferred can be bound to a deferred `d` using . This calls `f` with the value that `d` becomes determined to.
-The call to `bind` returns a deferred that becomes determined once the deferred
-returned by `f` becomes determined. In this way, asynchronous values can be
-composed in a monadic fashion.
+`bind` binds a procedure `f` itself returning a deferred can be bound to a
+deferred `d` using . This calls `f` with the value that `d` becomes determined
+to.  The call to `bind` returns a deferred that becomes determined once the
+deferred returned by `f` becomes determined. In this way, asynchronous values
+can be composed in a monadic fashion.
 
 No other bound procedures are executed until `f` returns, even if `f` fills an
 ivar.
@@ -70,7 +71,7 @@ ivar.
 
 `(return x)`
 
-`return`` returns a deferred bound to an ivar that has already been filled
+`return` returns a deferred bound to an ivar that has already been filled
 with the value `x`.
 
 ### peek
@@ -161,7 +162,6 @@ This code should run, with limited modification, on any R5RS-compliant Scheme
 distribution supporting SRFI-18 (threading) and SRFI-35 (conditions). I use
 Chicken's `ir-macro-transformer` to define exceptions. That could easily be
 stripped out, as well as the use of Chicken's `abort` procedure.
-
 
 [1]: https://realworldocaml.org/v1/en/html/concurrent-programming-with-async.html
 [2]: https://github.com/janestreet/async_kernel/tree/master/src
