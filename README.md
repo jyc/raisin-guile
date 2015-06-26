@@ -21,10 +21,11 @@ I made it for fun and to see how difficult such a thing would be.
         - [return](#markdown-header-return)
         - [peek](#markdown-header-peek)
     - [Operators](#markdown-header-operators)
-        - [>>=](#markdown-header->>=)
-        - [>>+](#markdown-header->>+)
+        - [>>=](#markdown-header-)
+        - [>>+](#markdown-header-_1_)
     - [Scheduler](#markdown-header-scheduler)
         - [scheduler-start!](#markdown-header-scheduler-start)
+        - [scheduler-start!](#markdown-header-scheduler-stop)
 - [Example](#markdown-header-example)
 - [Cleanliness](#markdown-header-cleanliness)
 - [Performance](#markdown-header-performance)
@@ -156,6 +157,8 @@ To run a program using async, you must start the scheduler using
 `scheduler-start!` starts the scheduler which calls procedures bound to
 deferreds when they become determined. It calls `on-stop` after the scheduler
 has been stopped.
+
+## scheduler-stop!
 
 `(scheduler-stop!)`
 
