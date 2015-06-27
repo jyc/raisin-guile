@@ -192,9 +192,9 @@
                     (lambda (i)
                       (for-each
                         (lambda (f)
+                          (f (ivar-x i))
                           (if (not current)
-                            (exit))
-                          (f (ivar-x i)))
+                            (exit #t)))
                         (ivar-bound i))
                       (ivar-bound-set! i '()))
                     ready*))))

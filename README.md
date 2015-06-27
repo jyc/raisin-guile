@@ -1,4 +1,3 @@
-
 # Async for CHICKEN Scheme
 
 This repository contains some experiments on replicating the interface of
@@ -145,7 +144,11 @@ has been stopped.
 `(scheduler-stop!)`
 
 `scheduler-stop!` signals the scheduler to stop. The scheduler will stop after
-it has finished executing all of the ready procedures.
+the procedure that called `scheduler-stop!` returns, if that procedure was
+executed by the scheduler due to it being bound by a function, or after it has
+executed all of the ready procedures, if it is called externally.
+In the latter case, `scheduler-stop!` will block until all the ready procedures
+have been executed.
 
 # Example
 
