@@ -172,13 +172,13 @@
 
   (define (scheduler-start! #!key (on-stop (lambda () #t)))
     (let ((this (gensym)))
-      (funnel! assert-only: #t)
+      (funnel!)
       (if current
         (abort (make-already-scheduling-exn "A scheduler is already running."))
         (set! current this))
       (unfunnel!)
       (let loop ()
-        (funnel! assert-only: #t)
+        (funnel!)
         (if (not (and current (eq? current this)))
           (begin
             (unfunnel!)
@@ -188,29 +188,31 @@
               (lambda (exit)
                 (let ((ready* ready))
                   (set! ready '())
-                  (for-each
-                    (lambda (i)
-                      (for-each
-                        (lambda (f)
-                          (f (ivar-x i))
-                          (if (not current)
-                            (exit #t)))
-                        (ivar-bound i))
-                      (ivar-bound-set! i '()))
-                    ready*))))
-            ; Check to make sure scheduler-stop! hasn't been called while executing fs
-            (if (not current) 
+                  (for-each (lambda (i)
+                              (for-each
+                                (lambda (f)
+                                  (unfunnel!)
+
+                                  (f (ivar-x i))
+
+                                  (funnel!)
+                                  (if (not (and current (eq? current this)))
+                                    (exit #t)))
+                                (ivar-bound i))
+                              (ivar-bound-set! i '()))
+                            ready*))))
+            (if (not (and current (eq? current this))) 
               (unfunnel!)
               (begin
                 (if (null? ready)
                   (begin
                     (set! suspended #t)
-                    (let loop ()
+                    (let wait ()
                       (if suspended
                         (begin
                           (unfunnel! condition: unsuspend-condition)
                           (funnel!)
-                          (loop))))))
+                          (wait))))))
                 (unfunnel!)
                 (loop))))))))
 
@@ -221,6 +223,8 @@
         (abort (make-not-scheduling-exn "No scheduler is currently running, so no scheduler can be stopped."))
         (unfunnel!)))
     (set! current #f)
+    (set! ready '())
     (unsuspend!)
     (unfunnel!))
+
   )

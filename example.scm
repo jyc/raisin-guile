@@ -18,10 +18,21 @@
 (printf "Starting...~%")
 (>>= (after 1.5)
      (lambda (_) (printf "A (around 1.5 seconds after start)~%") (return "A"))
-     (lambda (x) (printf "B (this should be A: ~A~%" x) (return '()))
+     (lambda (x) (printf "B this should be A: ~A~%" x) (return '()))
      (lambda (_) (after 3.5))
      (lambda (_) (printf "C (around 5 seconds after start!)~%") (return '()))
-     (lambda (_) (scheduler-stop!) (return '())))
+     (lambda (_)
+       (scheduler-stop!)
+       (bind (after 1)
+             (lambda (_) 
+               (printf "D (in a new scheduler?!?)~%")
+               (scheduler-stop!)
+               ; We'll never actually get here.
+               (return '())))
+       (scheduler-start!)
+       ; Or here, either.
+       (return '()))
+     (lambda (_) (printf "I should not be executed." (return '()))))
 
 ;(seq (after 1.5)
 ;     x <* ((printf "A (around 1.5 seconds after start)~%") "A")
@@ -35,5 +46,9 @@
 (set-signal-handler! signal/int
                      (lambda (sig)
                        (scheduler-stop!)))
+
+(define (snooze)
+  (bind (after 100)
+        (lambda (_) (snooze))))
 
 (scheduler-start! on-stop: (lambda () (printf "Stopped.~%")))

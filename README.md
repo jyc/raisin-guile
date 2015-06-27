@@ -145,10 +145,8 @@ has been stopped.
 
 `scheduler-stop!` signals the scheduler to stop. The scheduler will stop after
 the procedure that called `scheduler-stop!` returns, if that procedure was
-executed by the scheduler due to it being bound by a function, or after it has
-executed all of the ready procedures, if it is called externally.
-In the latter case, `scheduler-stop!` will block until all the ready procedures
-have been executed.
+executed by the scheduler due to it being bound by a function, or after
+`scheduler-stop!` obtains the scheduler mutex, if it is called externally.
 
 # Example
 
