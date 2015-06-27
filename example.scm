@@ -15,24 +15,21 @@
 (write (peek d))
 (newline)
 
-(define (time-after s)
-  (seconds->time (+ s (time->seconds (current-time)))))
-
-(define (after s)
-  (let* ((i (new-ivar))
-        (deadline (time-after s))
-        (thunk (lambda ()
-                 (thread-sleep! deadline)
-                 (ivar-fill! i '()))))
-    (thread-start! (make-thread thunk))
-    (ivar-read i)))
-
 (printf "Starting...~%")
 (>>= (after 1.5)
      (lambda (_) (printf "A (around 1.5 seconds after start)~%") (return "A"))
      (lambda (x) (printf "B (this should be A: ~A~%" x) (return '()))
      (lambda (_) (after 3.5))
      (lambda (_) (printf "C (around 5 seconds after start!)~%") (return '())))
+
+;(seq (after 1.5)
+;     x <* ((printf "A (around 1.5 seconds after start)~%") "A")
+;     ** ((printf "B (this should be A: ~A~%" x))
+;     (after 3.5)
+;     ** ((printf "C (around 5 seconds after start!)~%")))
+
+(define (time-after s)
+  (seconds->time (+ s (time->seconds (current-time)))))
 
 ; sleep forever to prevent the scheduler from thinking we're deadlocked when everything is done...
 (thread-start!

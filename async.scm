@@ -2,13 +2,16 @@
                bind return
                peek 
                scheduler-start! scheduler-stop!
+
+               after
+
                (syntax: >>= bind return)
-               (syntax: >>+ bind return)
+               (syntax: seq bind)
+               (syntax: async bind)
                )
   (import scheme chicken)
   (use extras)
-  (use srfi-69)
-  (use srfi-18)
+  (use srfi-18 srfi-69)
 
   (define-syntax define-deferred-exn
     (ir-macro-transformer
@@ -113,6 +116,60 @@
       (ivar-fill! i x)
       (ivar-read i)))
 
+  (define-syntax >>=
+    (syntax-rules ()
+      ((_ a b c ...)
+       (>>= (bind a b)
+            c ...))
+      ((_ a)
+       a)))
+
+  (define-syntax seq
+    (syntax-rules (<- <* _ **)
+      ((_ x <- d)
+       d)
+      ((_ x <- d rest ...)
+       (bind d (lambda (x) (seq rest ...))))
+      ((_ _ <- d rest ...)
+       d)
+      ((_ _ <- d rest ...)
+       (bind d (lambda (ignored) (seq rest ...))))
+      ((_ x <* (d ...))
+       (return (begin d ...)))
+      ((_ x <* (d ...))
+       (return (begin d ...)))
+      ((_ x <* (d ...) rest ...)
+       (bind (return (begin d ...)) (lambda (x) (seq rest ...))))
+      ((_ _ <* (d ...))
+       (return (begin d ...)))
+      ((_ ** (d ...) rest ...)
+       (bind (return (begin d ...)) (lambda (_) (seq rest ...))))
+      ((_ d)
+       d)
+      ((_ d rest ...)
+       (bind d (lambda (_) (seq rest ...))))
+      ((_)
+       (return '()))))
+
+  (define-syntax async
+    (syntax-rules ()
+      ((_ body ...)
+       (let* ((i (new-ivar))
+              (d (ivar-read i))
+              (f (lambda ()
+                   (let ((x (begin body ...)))
+                     (ivar-fill! i x)))))
+         (thread-start! (make-thread f))
+         d))))
+
+  (define (time-after s)
+    (seconds->time (+ s (time->seconds (current-time)))))
+
+  (define (after s)
+    (async
+      (thread-sleep! (time-after s))
+      '()))
+
   (define (scheduler-start! #!key (on-stop (lambda () #t)))
     (let ((this (gensym)))
       (funnel!)
@@ -162,26 +219,4 @@
     (set! current #f)
     (unsuspend!)
     (unfunnel!))
-
-  (define-syntax >>=
-    (syntax-rules ()
-      ((_ a b c ...)
-       (>>= (bind a b)
-            c ...))
-      ((_ a)
-       a)
-      ((_) (return '()))))
-
-  (define-syntax >>+
-    (syntax-rules ()
-      ((_ a ((x) b ...) c ...)
-       (>>+ (bind a
-                  (lambda (x)
-                    b ...))
-            c ...))
-      ((_ a (() b ...) c ...)
-       (>>+ a ((_) b ...) c ...))
-      ((_ a b c ...)
-       (>>+ a (() b) c ...))
-      ((_ x) x)))
   )

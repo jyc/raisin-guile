@@ -83,7 +83,7 @@ with the value `x`.
 returns `'empty` if the ivar is empty, and `('filled . x)` if the ivar has been
 filled with the value `x`.
 
-## Operators
+## Macros
 
 ### >>=
 
@@ -92,36 +92,40 @@ filled with the value `x`.
 `>>=` binds the deferred `a` to the procedure `b`, then binds the resulting
 deferred to the procedure `c`, and so on.
 
-### >>+
+### async
 
-`(>>+ a ((x) b ...) c ...)`
+`(async body ...)`
 
-`>>+` is a bit of syntactic sugar. I don't recommend using it unless you
-can understand the syntax-rules definition:
+`async` executes `body ...` in a new thread and returns a deferred that becomes
+determined when that thread has finished executing.
 
-````
-(define-syntax >>+
-    (syntax-rules ()
-      ((_ a ((x) b ...) c ...)
-   (>>+ (bind a
-              (lambda (x)
-                b ...))
-        c ...))
-  ((_ a (() b ...) c ...)
-   (>>+ a ((_) b ...) c ...))
-  ((_ a b c ...)
-   (>>+ a (() b) c ...))
-  ((_ x) x)))
-````
+For example, the `after` procedure, which returns a deferred that becomes
+determined after some number of seconds, could be defined as follows:
 
+    (define (time-after s)
+      (seconds->time (+ s (time->seconds (current-time)))))
+    
+    (define (after s)
+      (async
+        (thread-sleep! (time-after s))
+        '()))
 
-`>>+` binds the deferred `a` to the procedure `(lambda (x) b ...)`, then
-recurses to `>>+` the resulting deferred with `c ...`. `((x) b ...)` can
-be replced with `(() b ...)` if the value the previous deferred becomes
-determined to is not cared about. If the the application does not match either
-of the two preceding forms, then it expands to `(>&gt+ (a (() b) c ...))`.
+### seq
 
-I'm not sure whether or not this is a good idea.
+    (seq d
+         x <- (f foo)
+         _ <- (b x)
+         y <* ((g zar) (h doz))
+         _ <* ((i fizz) (h buzz))
+         ** ((j no) (k exit)))
+
+`seq` is syntactic sugar for `>>=`.
+
+`<-` binds the value the expression to its right of becomes determined to to the
+variable on its left. The following lines are then evaluated. `_` as a variable
+names ignores the value. `<*` instead of `<-` wraps the expressions surrounded
+by parentheses to its right with `(return (begin ...))`. `**` instead of a
+variable name is equivalent to `_ <*`.
 
 ## Scheduler
 
