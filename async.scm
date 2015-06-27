@@ -91,16 +91,16 @@
 
   (define (bind d f)
     (if (not (procedure? f))
-      (abort (make-expected-deferred-exn "Expected procedure.")))
+      (abort (make-expected-proc-exn "Expected procedure.")))
     (let* ((i (deferred-ivar d))
            (i* (new-ivar))
            (f* (lambda (x)
                  (let* ((d* (f x))
-                        (i** (deferred-ivar d*))
+                        (i** (if (not (deferred? d*))
+                               (abort (make-expected-deferred-exn "Expected deferred result."))
+                               (deferred-ivar d*)))
                         (f** (lambda (x)
-                               (ivar-fill! i* x))))
-                   (if (not (deferred? d*))
-                     (abort (make-expected-deferred-exn "Expected deferred result.")))
+                               (ivar-fill! i* x)))) 
                    (bind* i** f**)))))
       (bind* i f*)
       (ivar-read i*)))
@@ -172,7 +172,7 @@
 
   (define (scheduler-start! #!key (on-stop (lambda () #t)))
     (let ((this (gensym)))
-      (funnel!)
+      (funnel! assert-only: #t)
       (if current
         (abort (make-already-scheduling-exn "A scheduler is already running."))
         (set! current this))
@@ -197,7 +197,11 @@
                           (f (ivar-x i)))
                         (ivar-bound i))
                       (ivar-bound-set! i '()))
-                    ready*))
+                    ready*))))
+            ; Check to make sure scheduler-stop! hasn't been called while executing fs
+            (if (not current) 
+              (unfunnel!)
+              (begin
                 (if (null? ready)
                   (begin
                     (set! suspended #t)
@@ -206,9 +210,9 @@
                         (begin
                           (unfunnel! condition: unsuspend-condition)
                           (funnel!)
-                          (loop))))))))
-            (unfunnel!)
-            (loop))))))
+                          (loop))))))
+                (unfunnel!)
+                (loop))))))))
 
   (define (scheduler-stop!)
     (funnel!)

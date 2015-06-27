@@ -20,7 +20,8 @@
      (lambda (_) (printf "A (around 1.5 seconds after start)~%") (return "A"))
      (lambda (x) (printf "B (this should be A: ~A~%" x) (return '()))
      (lambda (_) (after 3.5))
-     (lambda (_) (printf "C (around 5 seconds after start!)~%") (return '())))
+     (lambda (_) (printf "C (around 5 seconds after start!)~%") (return '()))
+     (lambda (_) (scheduler-stop!) (return '())))
 
 ;(seq (after 1.5)
 ;     x <* ((printf "A (around 1.5 seconds after start)~%") "A")
@@ -30,14 +31,6 @@
 
 (define (time-after s)
   (seconds->time (+ s (time->seconds (current-time)))))
-
-; sleep forever to prevent the scheduler from thinking we're deadlocked when everything is done...
-(thread-start!
-  (make-thread
-    (lambda ()
-      (let loop ()
-        (thread-sleep! (time-after 100))
-        (loop)))))
 
 (set-signal-handler! signal/int
                      (lambda (sig)
