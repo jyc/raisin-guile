@@ -191,19 +191,20 @@
               (lambda (exit)
                 (let ((ready* ready))
                   (set! ready '())
-                  (for-each (lambda (i)
-                              (for-each
-                                (lambda (f)
-                                  (unfunnel!)
+                  (for-each
+                    (lambda (i)
+                      (for-each
+                        (lambda (f)
+                          (unfunnel!)
 
-                                  (f (ivar-x i))
+                          (f (ivar-x i))
 
-                                  (funnel! assert-only: #t)
-                                  (if (not (and current (eq? current this)))
-                                    (exit #t)))
-                                (ivar-bound i))
-                              (ivar-bound-set! i '()))
-                            ready*))))
+                          (funnel! assert-only: #t)
+                          (if (not (and current (eq? current this)))
+                            (exit #t)))
+                        (ivar-bound i))
+                      (ivar-bound-set! i '()))
+                    ready*))))
             (if (not (and current (eq? current this))) 
               (unfunnel!)
               (begin
