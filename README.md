@@ -152,6 +152,35 @@ executed by the scheduler due to it being bound by a function, or after
 
 There is a small example script in `example.scm`.
 
+# Common Problems
+
+## Why is my program aborting with `(exn arity)`?
+
+This will happen with the following code:
+
+    (bind (return 5)
+          (lambda ()
+            (return "foo")))
+
+The reason is that the procedure bound to `(return 5)` expects no arguments,
+when all procedures used as the second argument to bound should take one
+argument, the value to which the deferred they are bound to becomes determined,
+and return one value of type deferred.
+
+The scheduler tries to call `(lambda () (return "foo"))` with `5` but cannot.
+
+## Why is my program aborting with "Expected deferred result."?
+
+This will happen with the following code:
+
+    (bind (return 5)
+          (lambda (x)
+            (+ x 7)))
+
+The reason is that procedures bound to deferreds must themselves return
+deferreds. Why is this? Simply put, because it makes composition of deferreds
+cleaner.
+
 # Cleanliness
 
 I hacked this out in a couple hours, I haven't tried to refactor it to make it
