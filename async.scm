@@ -28,6 +28,7 @@
   (define-deferred-exn expected-deferred)
   (define-deferred-exn expected-proc)
   (define-deferred-exn unexpected-lock)
+  (define-deferred-exn unexpected-nesting)
   (define-deferred-exn already-scheduling)
   (define-deferred-exn not-scheduling)
 
@@ -50,7 +51,9 @@
     (if (= global-mutex-nesting 0)
       (if condition
         (mutex-unlock! global-mutex condition)
-        (mutex-unlock! global-mutex))))
+        (mutex-unlock! global-mutex))
+      (if condition
+        (abort (make-unexpected-nesting-exn "Mutex lock was unexpectedly nested.")))))
 
   (define (unsuspend!)
     (set! suspended #f)
@@ -178,7 +181,7 @@
         (set! current this))
       (unfunnel!)
       (let loop ()
-        (funnel!)
+        (funnel! assert-only: #t)
         (if (not (and current (eq? current this)))
           (begin
             (unfunnel!)
@@ -195,7 +198,7 @@
 
                                   (f (ivar-x i))
 
-                                  (funnel!)
+                                  (funnel! assert-only: #t)
                                   (if (not (and current (eq? current this)))
                                     (exit #t)))
                                 (ivar-bound i))
@@ -211,7 +214,7 @@
                       (if suspended
                         (begin
                           (unfunnel! condition: unsuspend-condition)
-                          (funnel!)
+                          (funnel! assert-only: #t)
                           (wait))))))
                 (unfunnel!)
                 (loop))))))))
