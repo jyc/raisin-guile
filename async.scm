@@ -3,10 +3,7 @@
                peek 
                scheduler-start! scheduler-stop!
 
-               after
-
                (syntax: >>= bind return)
-               (syntax: seq bind)
                (syntax: async bind)
                )
   (import scheme chicken)
@@ -91,17 +88,19 @@
 
   (define (bind d f)
     (if (not (procedure? f))
-      (abort (make-expected-deferred-exn "Expected procedure.")))
+      (abort (make-expected-proc-exn "Expected procedure.")))
+    (if (not (deferred? d))
+      (abort (make-expected-deferred-exn "Expected deferred to bind to.")))
     (let* ((i (deferred-ivar d))
            (i* (new-ivar))
            (f* (lambda (x)
-                 (let* ((d* (f x))
-                        (i** (deferred-ivar d*))
-                        (f** (lambda (x)
-                               (ivar-fill! i* x))))
+                 (let ((d* (f x)))
                    (if (not (deferred? d*))
                      (abort (make-expected-deferred-exn "Expected deferred result.")))
-                   (bind* i** f**)))))
+                   (let* ((i** (deferred-ivar d*))
+                          (f** (lambda (x)
+                                 (ivar-fill! i* x))))
+                     (bind* i** f**))))))
       (bind* i f*)
       (ivar-read i*)))
 
@@ -124,33 +123,6 @@
       ((_ a)
        a)))
 
-  (define-syntax seq
-    (syntax-rules (<- <* _ **)
-      ((_ x <- d)
-       d)
-      ((_ x <- d rest ...)
-       (bind d (lambda (x) (seq rest ...))))
-      ((_ _ <- d rest ...)
-       d)
-      ((_ _ <- d rest ...)
-       (bind d (lambda (ignored) (seq rest ...))))
-      ((_ x <* (d ...))
-       (return (begin d ...)))
-      ((_ x <* (d ...))
-       (return (begin d ...)))
-      ((_ x <* (d ...) rest ...)
-       (bind (return (begin d ...)) (lambda (x) (seq rest ...))))
-      ((_ _ <* (d ...))
-       (return (begin d ...)))
-      ((_ ** (d ...) rest ...)
-       (bind (return (begin d ...)) (lambda (_) (seq rest ...))))
-      ((_ d)
-       d)
-      ((_ d rest ...)
-       (bind d (lambda (_) (seq rest ...))))
-      ((_)
-       (return '()))))
-
   (define-syntax async
     (syntax-rules ()
       ((_ body ...)
@@ -161,14 +133,6 @@
                      (ivar-fill! i x)))))
          (thread-start! (make-thread f))
          d))))
-
-  (define (time-after s)
-    (seconds->time (+ s (time->seconds (current-time)))))
-
-  (define (after s)
-    (async
-      (thread-sleep! (time-after s))
-      '()))
 
   (define (scheduler-start! #!key (on-stop (lambda () #t)))
     (let ((this (gensym)))
