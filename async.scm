@@ -3,8 +3,13 @@
                peek 
                scheduler-start! scheduler-stop!
 
+               any all                
+               after              
+
                (syntax: >>= bind return)
                (syntax: async bind)
+               (syntax: >>$ bind return ivar-fill! ivar-read)
+               (syntax: seq bind) 
                )
   (import scheme chicken)
   (use extras)
@@ -25,6 +30,7 @@
   (define-deferred-exn expected-deferred)
   (define-deferred-exn expected-proc)
   (define-deferred-exn unexpected-lock)
+  (define-deferred-exn unexpected-nesting)
   (define-deferred-exn already-scheduling)
   (define-deferred-exn not-scheduling)
 
@@ -47,7 +53,9 @@
     (if (= global-mutex-nesting 0)
       (if condition
         (mutex-unlock! global-mutex condition)
-        (mutex-unlock! global-mutex))))
+        (mutex-unlock! global-mutex))
+      (if condition
+        (abort (make-unexpected-nesting-exn "Mutex lock was unexpectedly nested.")))))
 
   (define (unsuspend!)
     (set! suspended #f)
@@ -104,35 +112,16 @@
       (bind* i f*)
       (ivar-read i*)))
 
-  (define (peek d)
-    (let ((i (deferred-ivar d)))
-      (if (ivar-filled i)
-        (cons 'filled (ivar-x i))
-        'empty)))
-
   (define (return x)
     (let ((i (new-ivar)))
       (ivar-fill! i x)
       (ivar-read i)))
 
-  (define-syntax >>=
-    (syntax-rules ()
-      ((_ a b c ...)
-       (>>= (bind a b)
-            c ...))
-      ((_ a)
-       a)))
-
-  (define-syntax async
-    (syntax-rules ()
-      ((_ body ...)
-       (let* ((i (new-ivar))
-              (d (ivar-read i))
-              (f (lambda ()
-                   (let ((x (begin body ...)))
-                     (ivar-fill! i x)))))
-         (thread-start! (make-thread f))
-         d))))
+  (define (peek d)
+    (let ((i (deferred-ivar d)))
+      (if (ivar-filled i)
+        (cons 'filled (ivar-x i))
+        'empty)))
 
   (define (scheduler-start! #!key (on-stop (lambda () #t)))
     (let ((this (gensym)))
@@ -156,23 +145,30 @@
                     (lambda (i)
                       (for-each
                         (lambda (f)
-                          (if (not current)
-                            (exit))
-                          (f (ivar-x i)))
+                          (unfunnel!)
+
+                          (f (ivar-x i))
+
+                          (funnel! assert-only: #t)
+                          (if (not (and current (eq? current this)))
+                            (exit #t)))
                         (ivar-bound i))
                       (ivar-bound-set! i '()))
-                    ready*))
+                    ready*))))
+            (if (not (and current (eq? current this))) 
+              (unfunnel!)
+              (begin
                 (if (null? ready)
                   (begin
                     (set! suspended #t)
-                    (let loop ()
+                    (let wait ()
                       (if suspended
                         (begin
                           (unfunnel! condition: unsuspend-condition)
-                          (funnel!)
-                          (loop))))))))
-            (unfunnel!)
-            (loop))))))
+                          (funnel! assert-only: #t)
+                          (wait))))))
+                (unfunnel!)
+                (loop))))))))
 
   (define (scheduler-stop!)
     (funnel!)
@@ -181,6 +177,103 @@
         (abort (make-not-scheduling-exn "No scheduler is currently running, so no scheduler can be stopped."))
         (unfunnel!)))
     (set! current #f)
+    (set! ready '())
     (unsuspend!)
     (unfunnel!))
+
+  (define (any ds)
+    (let ((i (new-ivar))
+          (done #f))
+      (for-each
+        (lambda (d)
+          (bind d
+                (lambda (x)
+                  (when (not done)
+                    (set! done #t)
+                    (ivar-fill! i x))
+                  (return '()))))
+        ds)
+      (ivar-read i)))
+
+  (define (all ds)
+    (if (null? ds)
+      (return '())
+      (let ((d (car ds))
+            (ds (cdr ds)))
+        (bind d
+              (lambda (x)
+                (bind (all ds)
+                      (lambda (y)
+                        (return (cons x y)))))))))
+  (define-syntax >>=
+    (syntax-rules ()
+      ((_ a b c ...)
+       (>>= (bind a b)
+            c ...))
+      ((_ a)
+       a)))
+
+  (define-syntax async
+    (syntax-rules ()
+      ((_ body ...)
+       (let* ((i (new-ivar))
+              (d (ivar-read i))
+              (f (lambda ()
+                   (let ((x (begin body ...)))
+                     (ivar-fill! i x)))))
+         (thread-start! (make-thread f))
+         d))))
+
+  (define-syntax >>$
+    (syntax-rules ()
+      ((_ (d f ...) ...)
+       (let ((i (new-ivar))
+             (done #f))
+         (bind d
+               (lambda (x)
+                 (when (not done)
+                   (set! done #t)
+                   (bind (>>= (return x)
+                              f ...)
+                         (lambda (x)
+                           (ivar-fill! i x)
+                           (return '()))))
+                 (return '())))
+         ...))))
+
+  (define-syntax seq
+    (syntax-rules (<- <* _ **)
+      ((_ x <- d)
+       d)
+      ((_ x <- d rest ...)
+       (bind d (lambda (x) (seq rest ...))))
+      ((_ _ <- d rest ...)
+       d)
+      ((_ _ <- d rest ...)
+       (bind d (lambda (ignored) (seq rest ...))))
+      ((_ x <* (d ...))
+       (return (begin d ...)))
+      ((_ x <* (d ...))
+       (return (begin d ...)))
+      ((_ x <* (d ...) rest ...)
+       (bind (return (begin d ...)) (lambda (x) (seq rest ...))))
+      ((_ _ <* (d ...))
+       (return (begin d ...)))
+      ((_ ** (d ...) rest ...)
+       (bind (return (begin d ...)) (lambda (_) (seq rest ...))))
+      ((_ d)
+       d)
+      ((_ d rest ...)
+       (bind d (lambda (_) (seq rest ...))))
+      ((_)
+       (return '()))))
+
+  (define (time-after s)
+    (seconds->time (+ s (time->seconds (current-time)))))
+
+  (define (after s)
+    (async
+      (thread-sleep! (time-after s))
+      '()))
+
   )

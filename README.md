@@ -1,4 +1,3 @@
-
 # Async for CHICKEN Scheme
 
 This repository contains some experiments on replicating the interface of
@@ -145,11 +144,42 @@ has been stopped.
 `(scheduler-stop!)`
 
 `scheduler-stop!` signals the scheduler to stop. The scheduler will stop after
-it has finished executing all of the ready procedures.
+the procedure that called `scheduler-stop!` returns, if that procedure was
+executed by the scheduler due to it being bound by a function, or after
+`scheduler-stop!` obtains the scheduler mutex, if it is called externally.
 
 # Example
 
 There is a small example script in `example.scm`.
+
+# Common Problems
+
+## Why is my program aborting with `(exn arity)`?
+
+This will happen with the following code:
+
+    (bind (return 5)
+          (lambda ()
+            (return "foo")))
+
+The reason is that the procedure bound to `(return 5)` expects no arguments,
+when all procedures used as the second argument to bound should take one
+argument, the value to which the deferred they are bound to becomes determined,
+and return one value of type deferred.
+
+The scheduler tries to call `(lambda () (return "foo"))` with `5` but cannot.
+
+## Why is my program aborting with "Expected deferred result."?
+
+This will happen with the following code:
+
+    (bind (return 5)
+          (lambda (x)
+            (+ x 7)))
+
+The reason is that procedures bound to deferreds must themselves return
+deferreds. Why is this? Simply put, because it makes composition of deferreds
+cleaner.
 
 # Cleanliness
 

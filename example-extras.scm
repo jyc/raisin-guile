@@ -1,7 +1,5 @@
 (include "async.scm")
-(include "async-extras.scm")
 (import async)
-(import async-extras)
 
 ; Branching >>=.
 (>>$ ((return 0)
