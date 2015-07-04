@@ -239,7 +239,8 @@
                            (ivar-fill! i x)
                            (return '()))))
                  (return '())))
-         ...))))
+         ...
+         (ivar-read i)))))
 
   (define-syntax seq
     (syntax-rules (<- <* _ **)
