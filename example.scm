@@ -1,5 +1,5 @@
-(include "async.scm")
-(import async)
+(include "raisin.scm")
+(import raisin)
 
 (use srfi-18)
 (use posix)

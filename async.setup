@@ -1,8 +1,0 @@
-(compile -s -O3 -d1 async.scm -j async)
-(compile -s -O3 -d0 async.import.scm)
-
-(install-extension
-  'async
-  '("async.so" "async.import.so")
-  '((version "0.1"))
-)

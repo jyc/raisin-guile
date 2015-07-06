@@ -1,4 +1,4 @@
-# Async for CHICKEN Scheme
+# Raisin
 
 This repository contains some experiments on replicating the interface of
 OCaml's [Async][1] library in CHICKEN Scheme. It does not go anywhere near the

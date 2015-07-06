@@ -1,0 +1,8 @@
+(compile -s -O3 -d1 raisin.scm -j raisin)
+(compile -s -O3 -d0 raisin.import.scm)
+
+(install-extension
+  'raisin
+  '("raisin.so" "raisin.import.so")
+  '((version "0.1"))
+)

@@ -1,38 +1,38 @@
-(module async (new-ivar ivar-fill! ivar-read
-               bind return
-               peek 
-               scheduler-start! scheduler-stop!
-
-               any all                
-               after              
-
-               (syntax: >>= bind return)
-               (syntax: async bind)
-               (syntax: >>$ bind return ivar-fill! ivar-read)
-               (syntax: seq bind) 
-               )
+(module raisin (new-ivar ivar-fill! ivar-read
+                bind return
+                peek 
+                scheduler-start! scheduler-stop!
+ 
+                any all                
+                after              
+ 
+                (syntax: >>= bind return)
+                (syntax: raisin bind)
+                (syntax: >>$ bind return ivar-fill! ivar-read)
+                (syntax: seq bind) 
+                )
   (import scheme chicken)
   (use extras)
   (use srfi-18 srfi-69)
 
-  (define-syntax define-deferred-exn
+  (define-syntax define-raisin-exn
     (ir-macro-transformer
       (lambda (x i c)
         (if (not (symbol? (cadr x)))
-          (abort "Expected (define-deferred-exn name)."))
+          (abort "Expected (define-raisin-exn name)."))
         `(define (,(i (string->symbol (format "make-~A-exn" (i (cadr x))))) message . fargs)
            (make-composite-condition
              (make-property-condition 'exn 'message (apply format message fargs))
-             (make-property-condition 'deferred)
+             (make-property-condition 'raisin)
              (make-property-condition (quote ,(i (cadr x)))))))))
 
-  (define-deferred-exn ivar-stuffed)
-  (define-deferred-exn expected-deferred)
-  (define-deferred-exn expected-proc)
-  (define-deferred-exn unexpected-lock)
-  (define-deferred-exn unexpected-nesting)
-  (define-deferred-exn already-scheduling)
-  (define-deferred-exn not-scheduling)
+  (define-raisin-exn ivar-stuffed)
+  (define-raisin-exn expected-deferred)
+  (define-raisin-exn expected-proc)
+  (define-raisin-exn unexpected-lock)
+  (define-raisin-exn unexpected-nesting)
+  (define-raisin-exn already-scheduling)
+  (define-raisin-exn not-scheduling)
 
   (define global-mutex (make-mutex))
   (define global-mutex-nesting 0)
@@ -213,7 +213,7 @@
       ((_ a)
        a)))
 
-  (define-syntax async
+  (define-syntax raisin
     (syntax-rules ()
       ((_ body ...)
        (let* ((i (new-ivar))
@@ -273,7 +273,7 @@
     (seconds->time (+ s (time->seconds (current-time)))))
 
   (define (after s)
-    (async
+    (raisin
       (thread-sleep! (time-after s))
       '()))
 
