@@ -7,7 +7,7 @@
                 after              
  
                 (syntax: >>= bind return)
-                (syntax: raisin bind)
+                (syntax: async bind)
                 (syntax: >>$ bind return ivar-fill! ivar-read)
                 (syntax: seq bind) 
                 )
@@ -34,26 +34,29 @@
   (define-raisin-exn already-scheduling)
   (define-raisin-exn not-scheduling)
 
-  (define global-mutex (make-mutex))
-  (define global-mutex-nesting 0)
+  (define mutex (make-mutex))
+  (define mutex-nesting (make-parameter 0))
   (define ready '())
   (define unsuspend-condition (make-condition-variable))
   (define suspended #f)
   (define current #f)
 
   (define (funnel! #!key (assert-only #f))
-    (if (not (eq? (mutex-state global-mutex) (current-thread)))
-      (mutex-lock! global-mutex)
+    (if (not (eq? (mutex-state mutex) (current-thread)))
+      (begin
+        (mutex-nesting 0)
+        (mutex-lock! mutex))
       (if assert-only
         (abort (make-unexpected-lock-exn "Mutex was unexpectedly locked."))))
-    (set! global-mutex-nesting (+ global-mutex-nesting 1)))
+    (mutex-nesting (+ (mutex-nesting) 1)))
 
   (define (unfunnel! #!key (condition #f))
-    (set! global-mutex-nesting (- global-mutex-nesting 1))
-    (if (= global-mutex-nesting 0)
-      (if condition
-        (mutex-unlock! global-mutex condition)
-        (mutex-unlock! global-mutex))
+    (mutex-nesting (- (mutex-nesting) 1))
+    (if (= (mutex-nesting) 0)
+      (begin
+        (if condition
+          (mutex-unlock! mutex condition)
+          (mutex-unlock! mutex)))
       (if condition
         (abort (make-unexpected-nesting-exn "Mutex lock was unexpectedly nested.")))))
 
@@ -213,7 +216,7 @@
       ((_ a)
        a)))
 
-  (define-syntax raisin
+  (define-syntax async
     (syntax-rules ()
       ((_ body ...)
        (let* ((i (new-ivar))
@@ -273,7 +276,7 @@
     (seconds->time (+ s (time->seconds (current-time)))))
 
   (define (after s)
-    (raisin
+    (async
       (thread-sleep! (time-after s))
       '()))
 
