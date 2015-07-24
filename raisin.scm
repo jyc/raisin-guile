@@ -1,15 +1,15 @@
 (module raisin (new-ivar ivar-fill! ivar-read
-                bind return
-                peek 
+                bind return upon
+                peek
                 scheduler-start! scheduler-stop!
- 
-                any all                
-                after              
- 
+
+                any all
+                after
+
                 (syntax: >>= bind return)
                 (syntax: async bind)
                 (syntax: >>$ bind return ivar-fill! ivar-read)
-                (syntax: seq bind) 
+                (syntax: seq bind)
                 )
   (import scheme chicken)
   (use extras)
@@ -65,18 +65,25 @@
     (condition-variable-broadcast! unsuspend-condition))
 
   (define-record ivar
-    x
-    filled
-    bound
+    name      ; uninterned symbol
+    x	      ; the value the ivar becomes determined to, initially #f
+    filled    ; boolean
+    bound     ; procedure list
     )
 
   (define-record deferred
+    name      ; uninterned symbol
     ivar
     )
 
+  (define-record-printer (ivar x out)
+    (fprintf out "#<~A>" (ivar-name x)))
+
+  (define-record-printer (deferred x out)
+    (fprintf out "#<~A of ~A>" (deferred-name x) (ivar-name (deferred-ivar x))))
+
   (define (new-ivar)
-    (make-ivar #f #f '())
-    )
+    (make-ivar (gensym 'ivar) #f #f '()))
 
   (define (ivar-fill! i x)
     (funnel!)
@@ -90,30 +97,29 @@
     (unfunnel!))
 
   (define (ivar-read i)
-    (make-deferred i))
+    (make-deferred (gensym 'deferred) i))
 
-  (define (bind* i f)
-    (ivar-bound-set! i (cons f (ivar-bound i)))
-    (if (ivar-filled i)
-      (set! ready (cons i ready))))
+  (define (upon d f)
+    (let ((i (deferred-ivar d)))
+      (funnel!)
+      (ivar-bound-set! i (cons f (ivar-bound i)))
+      (if (ivar-filled i)
+        (set! ready (cons i ready)))
+      (unfunnel!)))
 
   (define (bind d f)
     (if (not (procedure? f))
       (abort (make-expected-proc-exn "Expected procedure.")))
     (if (not (deferred? d))
       (abort (make-expected-deferred-exn "Expected deferred to bind to.")))
-    (let* ((i (deferred-ivar d))
-           (i* (new-ivar))
-           (f* (lambda (x)
-                 (let ((d* (f x)))
-                   (if (not (deferred? d*))
-                     (abort (make-expected-deferred-exn "Expected deferred result.")))
-                   (let* ((i** (deferred-ivar d*))
-                          (f** (lambda (x)
-                                 (ivar-fill! i* x))))
-                     (bind* i** f**))))))
-      (bind* i f*)
-      (ivar-read i*)))
+    (let ((i (new-ivar)))
+      (upon d
+            (lambda (x)
+              (let ((d* (f x)))
+                (if (not (deferred? d*))
+                  (abort (make-expected-deferred-exn "Expected deferred result.")))
+                (upon d* (cut ivar-fill! i <>)))))
+      (ivar-read i)))
 
   (define (return x)
     (let ((i (new-ivar)))
@@ -140,7 +146,7 @@
             (unfunnel!)
             (on-stop))
           (begin
-            (call/cc 
+            (call/cc
               (lambda (exit)
                 (let ((ready* ready))
                   (set! ready '())
@@ -158,7 +164,7 @@
                         (ivar-bound i))
                       (ivar-bound-set! i '()))
                     ready*))))
-            (if (not (and current (eq? current this))) 
+            (if (not (and current (eq? current this)))
               (unfunnel!)
               (begin
                 (if (null? ready)
