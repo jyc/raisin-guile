@@ -224,17 +224,17 @@ filled with the value `x`.
 
 ### any
 
-`(any d1 d2 ...)`
+`(any ds)`
 
 `any` returns a deferred that becomes determined with the first value that any
-of `d1`, `d2`, and so on becomes determined to.
+of deferreds in the list `ds` becomes determined to.
 
 ### all
 
-`(all d1 d2 ...)`
+`(all ds)` 
 
-`all` returns a deferred that becomes determined with the list of values that
-`d1`, `d2`, and so on become defermined.
+`all` returns a deferred that becomes determined with the list of values to
+which the deferreds in `ds` become defermined.
 
 For example,
 

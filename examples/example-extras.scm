@@ -1,4 +1,4 @@
-(include "raisin.scm")
+(include "../raisin.scm")
 (import raisin)
 
 ; Branching >>=.
