@@ -186,7 +186,7 @@ exception.
 `ivar-read` returns a deferred bound to the ivar `i`. Once the ivar `i` becomes
 filled, the returned deferred will become determined.
 
-## deferred
+### deferred
 
 A deferred represents a value that will become available, or determined, at some
 indeterminate time in the future.
