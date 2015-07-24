@@ -73,9 +73,9 @@ To recap, here is what what we've written looks like so far:
 
     (define (f x)
       (return (+ x 1)))
-    
+
     (define d* (bind d f))
-    
+
     (bind d*
           (lambda (x)
             (print x)
@@ -91,7 +91,7 @@ so:
 
     (define (f x)
       (return (+ x 1)))
-    
+
     (bind (bind d f)
           (lambda (x)
             (print x)
@@ -154,7 +154,7 @@ them from functions, and more.
 
 ivars are structures may contain a value and are in one of two states -- empty
 or filled. The name comes from from Concurrent ML's IVar, which comes from Id's
-I-Structure). 
+I-Structure).
 
 An ivar is created with `(new-ivar)`. It is initially in the empty state. In the
 empty state a given ivar `i` can be filled with a value `x` using `(ivar-fill! i
@@ -236,7 +236,7 @@ of `d1`, `d2`, and so on becomes determined to.
 `all` returns a deferred that becomes determined with the list of values that
 `d1`, `d2`, and so on become defermined.
 
-For example, 
+For example,
 
     (all (return 1) (return 2) (return 'a))
 
@@ -275,11 +275,33 @@ determined after some number of seconds, could be defined as follows:
 
     (define (time-after s)
       (seconds->time (+ s (time->seconds (current-time)))))
-    
+
     (define (after s)
       (async
         (thread-sleep! (time-after s))
         '()))
+
+### >>$
+
+`(>>$ (d1 f1 ...) (d2 f2 ...))`
+
+`>>$` returns a deferred that would result `(>>= dn fn ...)` for the first `dn`
+that becomes determined. Although the other deferreds can still become
+determined, the other bound procedures will not run.
+
+For example,
+
+    (>>$ ((after 1)
+          (lambda (_)
+            (print "a")
+            (return 'a)))
+         ((after 2)
+          (lambda (_)
+            (print "b")
+            (return 'b))))
+
+... will become determined to `'a` after printing "a". "b" should never be
+printed.
 
 ### seq
 
@@ -300,7 +322,7 @@ variable name is equivalent to `_ <*`.
 
 ## Scheduler
 
-To run a program using async, you must start the scheduler using 
+To run a program using async, you must start the scheduler using
 `(scheduler-start!)`. The call will block until a call to `(scheduler-stop!)`.
 
 ### scheduler-start!
@@ -311,7 +333,7 @@ To run a program using async, you must start the scheduler using
 deferreds when they become determined. It calls `on-stop` after the scheduler
 has been stopped.
 
-## scheduler-stop!
+### scheduler-stop!
 
 `(scheduler-stop!)`
 
