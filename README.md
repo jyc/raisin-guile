@@ -150,7 +150,7 @@ them from functions, and more.
 
 # Procedures
 
-## ivar
+## Ivars
 
 ivars are structures may contain a value and are in one of two states -- empty
 or filled. The name comes from from Concurrent ML's IVar, which comes from Id's
@@ -186,7 +186,7 @@ exception.
 `ivar-read` returns a deferred bound to the ivar `i`. Once the ivar `i` becomes
 filled, the returned deferred will become determined.
 
-### deferred
+## Deferreds
 
 A deferred represents a value that will become available, or determined, at some
 indeterminate time in the future.
