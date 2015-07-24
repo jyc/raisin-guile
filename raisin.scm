@@ -4,7 +4,7 @@
                 scheduler-start! scheduler-stop!
 
                 any all
-                after
+                never after
 
                 (syntax: >>= bind return)
                 (syntax: async bind)
@@ -280,6 +280,9 @@
 
   (define (time-after s)
     (seconds->time (+ s (time->seconds (current-time)))))
+
+  (define (never)
+    (ivar-read (new-ivar)))
 
   (define (after s)
     (async
