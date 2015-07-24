@@ -222,6 +222,38 @@ with the value `x`.
 returns `'empty` if the ivar is empty, and `('filled . x)` if the ivar has been
 filled with the value `x`.
 
+### any
+
+`(any d1 d2 ...)`
+
+`any` returns a deferred that becomes determined with the first value that any
+of `d1`, `d2`, and so on becomes determined to.
+
+### all
+
+`(all d1 d2 ...)`
+
+`all` returns a deferred that becomes determined with the list of values that
+`d1`, `d2`, and so on become defermined.
+
+For example, 
+
+    (all (return 1) (return 2) (return 'a))
+
+... will become determined to `'(1 2 a)`.
+
+### never
+
+`(never)`
+
+`never` returns a deferred that never becomes determined.
+
+### after
+
+`(after s)`
+
+`after` returns a deferred that becomes determined after `s` seconds.
+
 ## Macros
 
 ### >>=
