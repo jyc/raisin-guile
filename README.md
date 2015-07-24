@@ -8,6 +8,146 @@ the basic Ivar/Deferred structures, a naive scheduler, and an `after` procedure.
 
 I made it for fun and to see how difficult such a thing would be.
 
+# Tutorial
+
+There are two fundamental types in Raisin: ivars and deferreds.
+
+Ivars are structures that can contain a value. They are created with the
+`(new-ivar)` procedure. An ivar can be in one of two states: filled or empty.
+Ivars are initially empty. You can fill an ivar `i` with a value `x` using
+`(ivar-fill! i x)`. Once an ivar is filled, it can never be filled again.
+Calling `ivar-fill!` on a filled ivar causes a runtime exception.
+
+What's the point of a fancy variable that can only be set once?  This is where
+deferreds come in. Deferreds represent a value that may or may not become
+determined at some point in time. You can create a deferred from an ivar `i`
+using `(ivar-read i)`. All of the deferreds returned will become determined
+with the value `x` when `(ivar-fill! i x)` is called.
+
+There is also the `return` procedure. `(return x)` creates a deferred that has
+already been filled with the value `x`. Note that `return` is not Scheme syntax
+-- Scheme procedures return the value of the last expression the body of their
+definition. `return` is just another procedure provided by Raisin.
+
+There is a `(peek d)` procedure that returns `'empty` (the symbol `'empty`) if
+the ivar to which the deferred `d` is bound is not yet filled or `('filled . x)`
+(a pair, created with `(cons 'filled x)`) if the ivar has been filled with the
+value `x`. But because deferreds represent values that may not yet be
+determined, you normally don't access them directly. Instead, you bind
+procedures to them to create new deferreds.
+
+Let's write a procedure `f` that takes an integer argument and returns a new
+deferred whose value is that integer plus one:
+
+(define (f x)
+  (return (+ x 1)))
+
+Suppose we have a deferred `d` that will become determined to some integer at
+some point in the future.  For example, we might be reading an integer from a
+computer across the network.  Doing this takes time in which we'd like other
+procedures to run, but we'd also like to be able to operate on this value even
+before it becomes determined.  We can bind `f` to `d` to create a new deferred
+`d*` representing the value to which `d` becomes determined, plus one.
+
+    (define d* (bind d f))
+
+If we want to print out the value of `d*` at the time *it* becomes determined
+(that is, after `d` has become determined and the scheduler has executed `f` on
+the value `d` became determined to) we can bind `d*` to another procedure:
+
+    (bind d*
+          (lambda (x)
+            (print x)
+            (return '())))
+
+Note that here we've bound `d*` to an "anonymous" procedure created with
+`lambda` instead of binding it to a procedure defined beforehand. Also note
+that even though we only cared about this procedure for its side effects, we
+still needed to have a `(return '())` at the end. This is because `bind` always
+expects a deferred as its first argument and a one-argument procedure returning
+a deferred as its second argument. If you forget to have some sort of deferred
+as the last expression in the body of a procedure you have bound, the scheduler
+will throw a runtime exception.
+
+To recap, here is what what we've written looks like so far:
+
+    (define (f x)
+      (return (+ x 1)))
+    
+    (define d* (bind d f))
+    
+    (bind d*
+          (lambda (x)
+            (print x)
+            (return '())))
+
+Supposing the definition of some deferred `d` that returns a number, we will end
+up with a deferred `d*` that becomes determined with the value that `d` becomes
+determined to, plus one, and a procedure bound to `d*` that will print out that
+value.
+
+If we didn't care about defining a new deferred `d*`, we could rewrite this like
+so:
+
+    (define (f x)
+      (return (+ x 1)))
+    
+    (bind (bind d f)
+          (lambda (x)
+            (print x)
+            (return '())))
+
+We could even avoid defining `f` and just use a `lambda`:
+
+    (bind (bind d
+               (lambda (x)
+                 (return (+ x 1))))
+          (lambda (x)
+            (print x)
+            (return '())))
+
+This style tends to get unwieldy after more than a few `bind`s, though, so there
+is a macro `>>=` that lets us chain binds more conveniently.
+
+    (>>= d
+         (lambda (x)
+           (return (+ x 1)))
+         (lambda (x)
+           (print x)
+           (return '())))
+
+## Deferreds vs. callbacks
+
+You might recognize this as similar to the callback pattern in other languages.
+In JavaScript, this example might have looked like:
+
+    getX(function (x) {
+        addOne(x, function (y) {
+            print(x);
+        });
+    });
+
+There are some important differences. First, calling callbacks is the
+responsibility of the procedure that is doing the asynchronous computation.
+This has some important implications. First, suppose we want to store in a
+variable a deferred corresponding to a value that may be filled in the future or
+may even already be filled. Doing this with callbacks is tricky. If the value
+is already determined, we can't register a new callback. Even if we're already
+sure the value hasn't been determined but if we want to register multiple
+callbacks, we have to implement this by wrapping the functions we want to bind.
+And if the callback we register itself calls callbacks, we end up with a nested
+callback execution path instead of a linear sequence of bound procedures being
+called. And we cannot represent the value of an asynchronous computation.
+
+In Raisin, procedures instead fill ivars, and the scheduler handles resolving
+all of the bound procedures. It is guaranteed that the execution of a bound
+procedure `f` will not be interrupted by the execution of another bound
+procedure, or even bound procedures whose deferreds become determined by the
+execution of `f`. Because binding a procedure to a deferred results in a new
+deferred, you can pass deferreds around as values, put them in lists, return
+them from functions, and more.
+
+
 # Procedures
 
 ## ivar
@@ -60,7 +200,7 @@ and become determined once the ivar to which they are bound is filled.
 
 `bind` binds a procedure `f` itself returning a deferred can be bound to a
 deferred `d` using . This calls `f` with the value that `d` becomes determined
-to.  The call to `bind` returns a deferred that becomes determined once the
+to. The call to `bind` returns a deferred that becomes determined once the
 deferred returned by `f` becomes determined. In this way, asynchronous values
 can be composed in a monadic fashion.
 
@@ -189,7 +329,7 @@ cleaner or test it very much.
 # Performance
 
 I have not tested performance. The scheduler is very naive -- it simply executes
-everything that has become ready in the last timestep  as soon as possible. It
+everything that has become ready in the last timestep as soon as possible. It
 uses CHICKEN's SRFI-18 interface rather than accessing its low-level scheduler
 primitives. I have not attempted to make any optimizations.
 
@@ -202,4 +342,5 @@ stripped out, as well as the use of Chicken's `abort` procedure.
 
 [1]: https://realworldocaml.org/v1/en/html/concurrent-programming-with-async.html
 [2]: https://github.com/janestreet/async_kernel/tree/master/src
+
 // vim: set tw=80 :
