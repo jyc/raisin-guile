@@ -261,8 +261,10 @@
          (lambda () e ...)
          (lambda (exn . params)
            ;; The default thread error handler will not do anything as of Guile 2.0.2.0.
-           (backtrace)
-           (format #t "ERROR: Throw to key `~a' with args `~a'~%~" exn params)))))))
+           (with-output-to-port (current-error-port)
+             (lambda ()
+               (backtrace)
+               (format #t "ERROR: Throw to key `~a' with args `~a'~%~" exn params)))))))))
 
 (define-syntax async
   (syntax-rules ()
