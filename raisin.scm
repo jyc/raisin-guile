@@ -253,24 +253,29 @@
     ((_ a)
      a)))
 
+(define-syntax try-thread
+  (syntax-rules ()
+    ((_ e ...)
+     (begin-thread
+       (catch #t
+         (lambda () e ...)
+         (lambda (exn . params)
+           ;; The default thread error handler will not do anything as of Guile 2.0.2.0.
+           (backtrace)
+           (format #t "ERROR: Throw to key `~a' with args `~a'~%~" exn params)))))))
+
 (define-syntax async
   (syntax-rules ()
     ((_ body ...)
      (let* ((i (new-ivar))
             (d (ivar-read i))
             (f (lambda ()
-                 (catch #t
-                   (lambda ()
-                     (let ((x (begin body ...)))
-                       (debug "async: filling ivar\n")
-                       (ivar-fill! i x)
-                       (debug "async: filled\n")))
-                   (lambda (e . params)
-                     ;; The default thread error handler will not do anything as of Guile 2.0.2.0.
-                     (backtrace)
-                     (format #t "ERROR: Throw to key `~a' with args `~a'~%~" e params))))))
+                 (let ((x (begin body ...)))
+                   (debug "async: filling ivar\n")
+                   (ivar-fill! i x)
+                   (debug "async: filled\n")))))
        (debug "async: starting thread\n")
-       (begin-thread (f))
+       (try-thread (f))
        (debug "async: done\n")
        d))))
 
