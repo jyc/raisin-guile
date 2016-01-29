@@ -1,0 +1,7 @@
+#!/bin/bash
+
+SITE_DIR=$(guile -c '(display (%site-dir))')
+INSTALL_DIR="$SITE_DIR/jyc"
+mkdir -p $INSTALL_DIR
+cp raisin.scm $INSTALL_DIR/
+cp debug.scm $INSTALL_DIR/

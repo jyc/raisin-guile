@@ -1,5 +1,5 @@
 (define-module (jyc raisin)
-  #:replace (peek bind)
+  #:replace (peek bind async)
   #:export (new-ivar ivar-fill! ivar-read
             upon bind return 
             scheduler-start! scheduler-stop!
@@ -29,7 +29,7 @@
   (define-syntax debug
     (syntax-rules ()
       ((_ fmt arg ...)
-       (print fmt arg ...)))))
+       (print fmt arg ...))))) 
 
 (define-syntax debug
   (syntax-rules ()
@@ -266,14 +266,11 @@
                        (ivar-fill! i x)
                        (debug "async: filled\n")))
                    (lambda (e . params)
-                     (print "\n\n\nUncaught exception: ~a ~a\n\n\n" e params))
-                   ))))
-       (begin-thread
-         (f)
-
-         )
+                     ;; The default thread error handler will not do anything as of Guile 2.0.2.0.
+                     (backtrace)
+                     (format #t "ERROR: Throw to key `~a' with args `~a'~%~" e params))))))
        (debug "async: starting thread\n")
-       ;(thread-start! (make-thread f))
+       (begin-thread (f))
        (debug "async: done\n")
        d))))
 
