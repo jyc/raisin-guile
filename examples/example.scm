@@ -1,8 +1,9 @@
-(include "../raisin.scm")
-(import raisin)
-
-(use srfi-18)
-(use posix)
+(define-module (jyc raisin example))
+(load "../raisin.scm")
+(include "../debug.scm")
+(use-modules
+  (jyc raisin)
+  (srfi srfi-18))
 
 (define i (new-ivar))
 (define d (ivar-read i))
@@ -15,32 +16,34 @@
 (write (peek d))
 (newline)
 
-(printf "Starting...~%")
+(define (print . args)
+  (display (apply format #f args)))
+
+(print "Starting...~%")
 (>>= (after 1.5)
-     (lambda (_) (printf "A (around 1.5 seconds after start)~%") (return "A"))
-     (lambda (x) (printf "B (this should be A: ~A~%" x) (return '()))
+     (lambda (_) (print "A (around 1.5 seconds after start)~%") (return "A"))
+     (lambda (x) (print "B (this should be A: ~A~%" x) (return '()))
      (lambda (_) (after 3.5))
-     (lambda (_) (printf "C (around 5 seconds after start!)~%") (return '())))
+     (lambda (_) (print "C (around 5 seconds after start!)~%") (return '())))
 
 ;(seq (after 1.5)
-;     x <* ((printf "A (around 1.5 seconds after start)~%") "A")
-;     ** ((printf "B (this should be A: ~A~%" x))
+;     x <* ((print "A (around 1.5 seconds after start)~%") "A")
+;     ** ((print "B (this should be A: ~A~%" x))
 ;     (after 3.5)
-;     ** ((printf "C (around 5 seconds after start!)~%")))
+;     ** ((print "C (around 5 seconds after start!)~%")))
 
-(define (time-after s)
-  (seconds->time (+ s (time->seconds (current-time)))))
+; Need to run this in a separate thread or Guile will run us in the same thread
+; as the Raisin scheduler. The Raisin scheduler might be blocked on a
+; condition, which it doesn't seem we can signal when we are on the same
+; thread.
+(call-with-new-thread
+  (lambda ()
+    (sigaction SIGINT
+      (lambda (sig)
+        (scheduler-stop!)))
 
-; sleep forever to prevent the scheduler from thinking we're deadlocked when everything is done...
-(thread-start!
-  (make-thread
-    (lambda ()
-      (let loop ()
-        (thread-sleep! (time-after 100))
-        (loop)))))
+    (let loop ()
+      (sleep 1)
+      (loop))))
 
-(set-signal-handler! signal/int
-                     (lambda (sig)
-                       (scheduler-stop!)))
-
-(scheduler-start! on-stop: (lambda () (printf "Stopped.~%")))
+(scheduler-start! #:on-stop (lambda () (print "Stopped.~%")))    

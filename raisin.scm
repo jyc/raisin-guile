@@ -1,211 +1,242 @@
-(module raisin (new-ivar ivar-fill! ivar-read
-                bind return upon
-                peek
-                scheduler-start! scheduler-stop!
+(define-module (jyc raisin)
+  #:replace (peek bind)
+  #:export (new-ivar ivar-fill! ivar-read
+            upon bind return 
+            scheduler-start! scheduler-stop!
+            any all
 
-                any all
-                never after
+            never after
 
-                (syntax: >>= bind return)
-                (syntax: async bind)
-                (syntax: >>$ bind return ivar-fill! ivar-read)
-                (syntax: seq bind)
-                )
-  (import scheme chicken)
-  (use extras)
-  (use srfi-18 srfi-69)
+            >>=
+            async
+            >>$ seq
 
-  (define-syntax define-raisin-exn
-    (ir-macro-transformer
-      (lambda (x i c)
-        (if (not (symbol? (cadr x)))
-          (abort "Expected (define-raisin-exn name)."))
-        `(define (,(i (string->symbol (format "make-~A-exn" (i (cadr x))))) message . fargs)
-           (make-composite-condition
-             (make-property-condition 'exn 'message (apply format message fargs))
-             (make-property-condition 'raisin)
-             (make-property-condition (quote ,(i (cadr x)))))))))
+            ?..
+            !!))
 
-  (define-raisin-exn ivar-stuffed)
-  (define-raisin-exn expected-deferred)
-  (define-raisin-exn expected-proc)
-  (define-raisin-exn unexpected-lock)
-  (define-raisin-exn unexpected-nesting)
-  (define-raisin-exn already-scheduling)
-  (define-raisin-exn not-scheduling)
+(use-modules
+  (srfi srfi-69)
+  (srfi srfi-9)
+  (srfi srfi-9 gnu)
+  (srfi srfi-26)
+  (ice-9 format)
+  (ice-9 match)
+  (ice-9 control)
+  (ice-9 threads))
 
-  (define mutex (make-mutex))
-  (define mutex-nesting (make-parameter 0))
-  (define ready '())
-  (define unsuspend-condition (make-condition-variable))
-  (define suspended #f)
-  (define current #f)
+#;(begin
+  (include "debug.scm")
+  (define-syntax debug
+    (syntax-rules ()
+      ((_ fmt arg ...)
+       (print fmt arg ...)))))
 
-  (define (funnel! #!key (assert-only #f))
-    (if (not (eq? (mutex-state mutex) (current-thread)))
+(define-syntax debug
+  (syntax-rules ()
+    ((_ fmt arg ...)
+     #t)))
+
+;;; `(define-record name field ...)` is shorthand for:
+;;; ```
+;;; (define-record-type <name>
+;;;   (make-<name> field ...)
+;;;   name?
+;;;   (field name-field name-field-set!)
+;;;   ...)
+;;; ```
+;;; The shorthand is from CHICKEN.
+(define-syntax define-record
+  (lambda (x)
+    (syntax-case x ()
+      ((_ name field ...)
+       (match-let* (((_ name* . fields*) (syntax->datum x))
+                    (% (lambda (fmt . args) (datum->syntax x (string->symbol (apply format #f fmt args)))))
+                    (tname (% "<~a>" name*))
+                    (constructor (% "make-~a" name*))
+                    (predicate (% "~a?" name*))
+                    (getter (lambda (field*) (% "~a-~a" name* field*)))
+                    (setter (lambda (field*) (% "~a-~a-set!" name* field*)))
+                    (field-entries (map (lambda (field*) `(,(datum->syntax x field*) ,(getter field*) ,(setter field*))) fields*)))
+         #`(define-record-type #,tname
+             (#,constructor field ...)
+             #,predicate
+             #,@field-entries))))))
+
+(define mutex (make-recursive-mutex))
+(define ready '())
+(define unsuspend-condition (make-condition-variable))
+(define suspended #f)
+(define current #f)
+
+(define* (funnel!)
+  (lock-mutex mutex))
+
+(define* (unfunnel! #:key condition)
+  (if condition
       (begin
-        (mutex-nesting 0)
-        (mutex-lock! mutex))
-      (if assert-only
-        (abort (make-unexpected-lock-exn "Mutex was unexpectedly locked."))))
-    (mutex-nesting (+ (mutex-nesting) 1)))
+        (debug "unfunnel!: waiting for condition...\n")
+        (unlock-mutex mutex condition)
+        (debug "unfunnel!: waited\n"))
+      (unlock-mutex mutex)))
 
-  (define (unfunnel! #!key (condition #f))
-    (mutex-nesting (- (mutex-nesting) 1))
-    (if (= (mutex-nesting) 0)
-      (begin
-        (if condition
-          (mutex-unlock! mutex condition)
-          (mutex-unlock! mutex)))
-      (if condition
-        (abort (make-unexpected-nesting-exn "Mutex lock was unexpectedly nested.")))))
+(define (unsuspend!)
+  (set! suspended #f)
+  (debug "unsuspend!: unsuspending... ~a\n" unsuspend-condition)
+  (broadcast-condition-variable unsuspend-condition)
+  (debug "unsuspend!: broadcasted...\n")
+  )
 
-  (define (unsuspend!)
-    (set! suspended #f)
-    (condition-variable-broadcast! unsuspend-condition))
+(define-record ivar
+  name      ; uninterned symbol
+  x	    ; the value the ivar becomes determined to, initially #f
+  filled    ; boolean
+  bound     ; procedure list
+  )
 
-  (define-record ivar
-    name      ; uninterned symbol
-    x	      ; the value the ivar becomes determined to, initially #f
-    filled    ; boolean
-    bound     ; procedure list
-    )
+(define-record deferred
+  name      ; uninterned symbol
+  ivar
+  )
 
-  (define-record deferred
-    name      ; uninterned symbol
-    ivar
-    )
+(set-record-type-printer! <ivar>
+  (match-lambda*
+    ((out ($ <ivar> name x filled bound))
+     (format out "#<~A>" (ivar-name x)))))
 
-  (define-record-printer (ivar x out)
-    (fprintf out "#<~A>" (ivar-name x)))
+(set-record-type-printer! <deferred>
+  (match-lambda
+    ((out ($<deferred> name ivar))
+     (format out "#<~A of ~A>" (deferred-name x) (ivar-name (deferred-ivar x)))))) 
 
-  (define-record-printer (deferred x out)
-    (fprintf out "#<~A of ~A>" (deferred-name x) (ivar-name (deferred-ivar x))))
+(define (new-ivar)
+  (make-ivar (gensym "ivar") #f #f '()))
 
-  (define (new-ivar)
-    (make-ivar (gensym 'ivar) #f #f '()))
-
-  (define (ivar-fill! i x)
-    (funnel!)
-    (if (ivar-filled i)
-      (abort (make-ivar-stuffed-exn "Ivar [i] was already filled.")))
-    (ivar-x-set! i x)
-    (ivar-filled-set! i #t)
-    (set! ready (cons i ready))
-    (if suspended
+(define (ivar-fill! i x)
+  (funnel!)
+  (if (ivar-filled i)
+      (throw 'raisin:ivar-stuffed "Ivar [i] was already filled."))
+  (ivar-x-set! i x)
+  (ivar-filled-set! i #t)
+  (set! ready (cons i ready))
+  (if suspended
       (unsuspend!))
-    (unfunnel!))
+  (unfunnel!))
 
-  (define (ivar-read i)
-    (make-deferred (gensym 'deferred) i))
+(define (ivar-read i)
+  (make-deferred (gensym "deferred") i))
 
-  (define (upon d f)
-    (let ((i (deferred-ivar d)))
-      (funnel!)
-      (ivar-bound-set! i (cons f (ivar-bound i)))
-      (if (ivar-filled i)
+(define (upon d f)
+  (let ((i (deferred-ivar d)))
+    (funnel!)
+    (ivar-bound-set! i (cons f (ivar-bound i)))
+    (if (ivar-filled i)
         (set! ready (cons i ready)))
-      (unfunnel!)))
+    (unfunnel!)))
 
-  (define (bind d f)
-    (if (not (procedure? f))
-      (abort (make-expected-proc-exn "Expected procedure.")))
-    (if (not (deferred? d))
-      (abort (make-expected-deferred-exn "Expected deferred to bind to.")))
-    (let ((i (new-ivar)))
-      (upon d
-            (lambda (x)
-              (let ((d* (f x)))
-                (if (not (deferred? d*))
-                  (abort (make-expected-deferred-exn "Expected deferred result.")))
-                (upon d* (cut ivar-fill! i <>)))))
-      (ivar-read i)))
+(define (bind d f)
+  (if (not (procedure? f))
+      (throw 'raisin:expected-proc "Expected procedure."))
+  (if (not (deferred? d))
+      (throw 'raisin:expected-deferred "Expected deferred to bind to."))
+  (let ((i (new-ivar)))
+    (upon d
+          (lambda (x)
+            (let ((d* (f x)))
+              (if (not (deferred? d*))
+                  (throw 'raisin:expected-deferred "Expected deferred result."))
+              (upon d* (cut ivar-fill! i <>)))))
+    (ivar-read i)))
 
-  (define (return x)
-    (let ((i (new-ivar)))
-      (ivar-fill! i x)
-      (ivar-read i)))
+(define (return x)
+  (let ((i (new-ivar)))
+    (ivar-fill! i x)
+    (ivar-read i)))
 
-  (define (peek d)
-    (let ((i (deferred-ivar d)))
-      (if (ivar-filled i)
+(define (peek d)
+  (let ((i (deferred-ivar d)))
+    (if (ivar-filled i)
         (cons 'filled (ivar-x i))
         'empty)))
 
-  (define (scheduler-start! #!key (on-stop (lambda () #t)))
-    (let ((this (gensym)))
-      (funnel!)
-      (if current
-        (abort (make-already-scheduling-exn "A scheduler is already running."))
+(define* (scheduler-start! #:key on-stop)
+  (let ((this (gensym)))
+    (funnel!)
+    (if current
+        (throw 'raisin:already-scheduling "A scheduler is already running.")
         (set! current this))
-      (unfunnel!)
-      (let loop ()
-        (funnel! assert-only: #t)
-        (if (not (and current (eq? current this)))
+    (let loop ()
+      (debug "scheduler-start!: looping\n")
+      (if (not (and current (eq? current this)))
+          ;; We're no longer the current scheduler (we've been stopped /or someone else is running).
+          ;; Shut down.
           (begin
+            (debug "scheduer-start!: stopped\n")
             (unfunnel!)
-            (on-stop))
+            (if on-stop (on-stop)))
+          ;; Still running!
           (begin
-            (call/cc
-              (lambda (exit)
-                (let ((ready* ready))
-                  (set! ready '())
-                  (for-each
-                    (lambda (i)
-                      (for-each
-                        (lambda (f)
-                          (unfunnel!)
-
-                          (f (ivar-x i))
-
-                          (funnel! assert-only: #t)
-                          (if (not (and current (eq? current this)))
-                            (exit #t)))
-                        (ivar-bound i))
-                      (ivar-bound-set! i '()))
-                    ready*))))
+            ;; Run procedures bound to things in `ready`.
+            ;; Copy to ready* beacuse bound procedures might themselves make
+            ;; things ready.
+            (let/ec exit
+              (let ((ready* ready))
+                (set! ready '())
+                (for-each
+                  (lambda (i)
+                    (for-each
+                      (lambda (f)
+                        (f (ivar-x i))
+                        (unless (and current (eq? current this))
+                          (exit #t)))
+                      (ivar-bound i))
+                    (ivar-bound-set! i '()))
+                  ready*)))
+            ;; Suspend ourselves if necessary (nothing is ready, but other
+            ;; things running on other threads might become ready).
+            ;; It's possible things we just ran might have made more things
+            ;; ready, in which case we don't need to suspend at all.
             (if (not (and current (eq? current this)))
-              (unfunnel!)
-              (begin
-                (if (null? ready)
-                  (begin
+                (unfunnel!)
+                (begin
+                  (when (null? ready)
                     (set! suspended #t)
                     (let wait ()
-                      (if suspended
-                        (begin
-                          (unfunnel! condition: unsuspend-condition)
-                          (funnel! assert-only: #t)
-                          (wait))))))
-                (unfunnel!)
-                (loop))))))))
+                      (when suspended
+                        (debug "scheduler-start!: suspending ~a\n" unsuspend-condition)
+                        (unfunnel! #:condition unsuspend-condition)
+                        (debug "scheduler-start!: unsuspended\n")
+                        (funnel!)
+                        (wait))))
+                  (loop))))))))
 
-  (define (scheduler-stop!)
-    (funnel!)
-    (if (not current)
-      (begin
-        (abort (make-not-scheduling-exn "No scheduler is currently running, so no scheduler can be stopped."))
-        (unfunnel!)))
-    (set! current #f)
-    (set! ready '())
-    (unsuspend!)
+(define (scheduler-stop!)
+  (funnel!)
+  (unless current
+    (throw 'raisin:not-scheduling "No scheduler is currently running, so no scheduler can be stopped.")
     (unfunnel!))
+  (set! current #f)
+  (set! ready '())
+  (debug "scheduler-stop!: unsuspending!\n")
+  (unsuspend!)
+  (debug "scheduler-stop!: unsuspended.\n")
+  (unfunnel!))
 
-  (define (any ds)
-    (let ((i (new-ivar))
-          (done #f))
-      (for-each
-        (lambda (d)
-          (bind d
-                (lambda (x)
-                  (when (not done)
-                    (set! done #t)
-                    (ivar-fill! i x))
-                  (return '()))))
-        ds)
-      (ivar-read i)))
+(define (any ds)
+  (let ((i (new-ivar))
+        (done #f))
+    (for-each
+      (lambda (d)
+        (bind d
+              (lambda (x)
+                (when (not done)
+                  (set! done #t)
+                  (ivar-fill! i x))
+                (return '()))))
+      ds)
+    (ivar-read i)))
 
-  (define (all ds)
-    (if (null? ds)
+(define (all ds)
+  (if (null? ds)
       (return '())
       (let ((d (car ds))
             (ds (cdr ds)))
@@ -214,79 +245,121 @@
                 (bind (all ds)
                       (lambda (y)
                         (return (cons x y)))))))))
-  (define-syntax >>=
-    (syntax-rules ()
-      ((_ a b c ...)
-       (>>= (bind a b)
-            c ...))
-      ((_ a)
-       a)))
+(define-syntax >>=
+  (syntax-rules ()
+    ((_ a b c ...)
+     (>>= (bind a b)
+          c ...))
+    ((_ a)
+     a)))
 
-  (define-syntax async
-    (syntax-rules ()
-      ((_ body ...)
-       (let* ((i (new-ivar))
-              (d (ivar-read i))
-              (f (lambda ()
-                   (let ((x (begin body ...)))
-                     (ivar-fill! i x)))))
-         (thread-start! (make-thread f))
-         d))))
+(define-syntax async
+  (syntax-rules ()
+    ((_ body ...)
+     (let* ((i (new-ivar))
+            (d (ivar-read i))
+            (f (lambda ()
+                 (catch #t
+                   (lambda ()
+                     (let ((x (begin body ...)))
+                       (debug "async: filling ivar\n")
+                       (ivar-fill! i x)
+                       (debug "async: filled\n")))
+                   (lambda (e . params)
+                     (print "\n\n\nUncaught exception: ~a ~a\n\n\n" e params))
+                   ))))
+       (begin-thread
+         (f)
 
-  (define-syntax >>$
-    (syntax-rules ()
-      ((_ (d f ...) ...)
-       (let ((i (new-ivar))
-             (done #f))
-         (bind d
-               (lambda (x)
-                 (when (not done)
-                   (set! done #t)
-                   (bind (>>= (return x)
-                              f ...)
-                         (lambda (x)
-                           (ivar-fill! i x)
-                           (return '()))))
-                 (return '())))
-         ...
-         (ivar-read i)))))
+         )
+       (debug "async: starting thread\n")
+       ;(thread-start! (make-thread f))
+       (debug "async: done\n")
+       d))))
 
-  (define-syntax seq
-    (syntax-rules (<- <* _ **)
-      ((_ x <- d)
-       d)
-      ((_ x <- d rest ...)
-       (bind d (lambda (x) (seq rest ...))))
-      ((_ _ <- d rest ...)
-       d)
-      ((_ _ <- d rest ...)
-       (bind d (lambda (ignored) (seq rest ...))))
-      ((_ x <* (d ...))
-       (return (begin d ...)))
-      ((_ x <* (d ...))
-       (return (begin d ...)))
-      ((_ x <* (d ...) rest ...)
-       (bind (return (begin d ...)) (lambda (x) (seq rest ...))))
-      ((_ _ <* (d ...))
-       (return (begin d ...)))
-      ((_ ** (d ...) rest ...)
-       (bind (return (begin d ...)) (lambda (_) (seq rest ...))))
-      ((_ d)
-       d)
-      ((_ d rest ...)
-       (bind d (lambda (_) (seq rest ...))))
-      ((_)
-       (return '()))))
+(define-syntax >>$
+  (syntax-rules ()
+    ((_ (d f ...) ...)
+     (let ((i (new-ivar))
+           (done #f))
+       (bind d
+             (lambda (x)
+               (when (not done)
+                 (set! done #t)
+                 (bind (>>= (return x)
+                            f ...)
+                       (lambda (x)
+                         (ivar-fill! i x)
+                         (return '()))))
+               (return '())))
+       ...
+       (ivar-read i)))))
 
-  (define (time-after s)
-    (seconds->time (+ s (time->seconds (current-time)))))
+(define-syntax seq
+  (syntax-rules (<- <* _ **)
+    ((_ x <- d)
+     d)
+    ((_ x <- d rest ...)
+     (bind d (lambda (x) (seq rest ...))))
+    ((_ _ <- d rest ...)
+     d)
+    ((_ _ <- d rest ...)
+     (bind d (lambda (ignored) (seq rest ...))))
+    ((_ x <* (d ...))
+     (return (begin d ...)))
+    ((_ x <* (d ...))
+     (return (begin d ...)))
+    ((_ x <* (d ...) rest ...)
+     (bind (return (begin d ...)) (lambda (x) (seq rest ...))))
+    ((_ _ <* (d ...))
+     (return (begin d ...)))
+    ((_ ** (d ...) rest ...)
+     (bind (return (begin d ...)) (lambda (_) (seq rest ...))))
+    ((_ d)
+     d)
+    ((_ d rest ...)
+     (bind d (lambda (_) (seq rest ...))))
+    ((_)
+     (return '()))))
 
-  (define (never)
-    (ivar-read (new-ivar)))
+(define (never)
+  (ivar-read (new-ivar)))
 
-  (define (after s)
-    (async
-      (thread-sleep! (time-after s))
-      '()))
+(define (after s)
+  (async
+    (debug "here\n")
+    (usleep (inexact->exact (truncate (* s 1000000))))
+    '()))
 
-  )
+(define async-prompt-tag (make-prompt-tag))
+
+(define in-async-prompt (make-fluid #f))
+
+(define (!! d)
+  (if (not (fluid-ref in-async-prompt))
+      (throw 'raisin:!!-called-but-not-in-async-prompt "!! was called outside of a ?.. block."))
+  (abort-to-prompt async-prompt-tag d))
+
+(define (async-prompt-handler k d)
+  (fluid-set! in-async-prompt #f)
+  (>>= d
+       (lambda (x)
+         (call-with-prompt async-prompt-tag
+           (lambda ()
+             (fluid-set! in-async-prompt #t)
+             (k x))
+           async-prompt-handler))))
+
+(define-syntax ?..
+  (syntax-rules ()
+    ((_ e ...)
+     (let ((i (new-ivar)))
+       (>>= (return #t)
+            (lambda (_)
+              (call-with-prompt async-prompt-tag
+                (lambda ()
+                  (fluid-set! in-async-prompt #t)
+                  (let ((x (begin e ...)))
+                    (fluid-set! in-async-prompt #f)
+                    (return x)))
+                async-prompt-handler)))))))

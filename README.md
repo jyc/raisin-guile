@@ -1,10 +1,11 @@
 # Raisin
 
 This repository contains some experiments on replicating the interface of
-OCaml's [Async][1] library in CHICKEN Scheme. It does not go anywhere near the
-scope of Async -- Async ([seems to][2]) encompasses its own garbage collector,
-scheduler, and, importantly, integrated I/O modules. All I have implemented is
-the basic Ivar/Deferred structures, a naive scheduler, and an `after` procedure.
+OCaml's [Async][1] library in Guile (originally in CHICKEN). It does not go
+anywhere near the scope of Async -- Async ([seems to][2]) encompasses its own
+garbage collector, scheduler, and, importantly, integrated I/O modules. All I
+have implemented is the basic Ivar/Deferred structures, a naive scheduler, and
+an `after` procedure.
 
 I made it for fun and to see how difficult such a thing would be.
 
@@ -383,16 +384,14 @@ cleaner or test it very much.
 # Performance
 
 I have not tested performance. The scheduler is very naive -- it simply executes
-everything that has become ready in the last timestep as soon as possible. It
-uses CHICKEN's SRFI-18 interface rather than accessing its low-level scheduler
-primitives. I have not attempted to make any optimizations.
+everything that has become ready in the last timestep as soon as possible. I
+have not attempted to make any optimizations.
 
 # Portability
 
 This code should run, with limited modification, on any R5RS-compliant Scheme
-distribution supporting SRFI-18 (threading) and SRFI-35 (conditions). I use
-Chicken's `ir-macro-transformer` to define exceptions. That could easily be
-stripped out, as well as the use of Chicken's `abort` procedure.
+distribution supporting SRFI-18 (threading) and SRFI-35 (conditions). In fact,
+this version was ported from CHICKEN to Guile with minimal effort.
 
 [1]: https://realworldocaml.org/v1/en/html/concurrent-programming-with-async.html
 [2]: https://github.com/janestreet/async_kernel/tree/master/src
