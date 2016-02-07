@@ -101,12 +101,12 @@
 (set-record-type-printer! <ivar>
   (match-lambda*
     ((out ($ <ivar> name x filled bound))
-     (format out "#<~A>" (ivar-name x)))))
+     (format out "#<~A>" name))))
 
 (set-record-type-printer! <deferred>
   (match-lambda
     ((out ($<deferred> name ivar))
-     (format out "#<~A of ~A>" (deferred-name x) (ivar-name (deferred-ivar x)))))) 
+     (format out "#<~A of ~A>" name (ivar-name ivar))))) 
 
 (define (new-ivar)
   (make-ivar (gensym "ivar") #f #f '()))
